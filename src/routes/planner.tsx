@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { Sparkles, Plane, Wallet, Calendar, Users, Compass } from "lucide-react";
 import { useState } from "react";
+import type { PlanInput } from "@/lib/plan.functions";
 
 export const Route = createFileRoute("/planner")({
   head: () => ({
@@ -15,35 +16,55 @@ export const Route = createFileRoute("/planner")({
   component: Planner,
 });
 
-const interests = [
+const interestOptions = [
   "Food", "Culture", "Nature", "Beach", "Nightlife", "History", "Shopping", "Adventure", "Family",
 ];
 
+export const PLAN_INPUT_STORAGE_KEY = "voyanomics:planInput";
+
 function Planner() {
   const navigate = useNavigate();
+  const [departureCountry, setDeparture] = useState("United States");
+  const [destination, setDestination] = useState("Lisbon, Portugal");
+  const [budget, setBudget] = useState("3000");
+  const [currency, setCurrency] = useState("USD");
+  const [days, setDays] = useState("7");
+  const [travelers, setTravelers] = useState("2");
   const [selected, setSelected] = useState<string[]>(["Food", "Culture"]);
   const [style, setStyle] = useState<"Budget" | "Comfort" | "Luxury">("Comfort");
 
   const toggle = (i: string) =>
     setSelected((s) => (s.includes(i) ? s.filter((x) => x !== i) : [...s, i]));
 
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const input: PlanInput = {
+      departureCountry: departureCountry.trim() || "Unknown",
+      destination: destination.trim() || "Unknown",
+      budget: Math.max(1, Number(budget) || 0),
+      currency,
+      days: Math.max(1, Number(days) || 1),
+      travelers: Math.max(1, Number(travelers) || 1),
+      comfort: style,
+      interests: selected,
+    };
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(PLAN_INPUT_STORAGE_KEY, JSON.stringify(input));
+    }
+    navigate({ to: "/results" });
+  };
+
   return (
     <AppShell title="AI Trip Planner" subtitle="Tell us the trip. We'll compute the economics.">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          navigate({ to: "/results" });
-        }}
-        className="mx-auto max-w-4xl"
-      >
+      <form onSubmit={onSubmit} className="mx-auto max-w-4xl">
         <div className="rounded-3xl border bg-card p-6 shadow-soft sm:p-8">
           <div className="grid gap-5 sm:grid-cols-2">
-            <Input icon={Plane} label="Departure Country" placeholder="United States" />
-            <Input icon={Compass} label="Destination" placeholder="Lisbon, Portugal" />
-            <Input icon={Wallet} label="Budget" placeholder="3000" type="number" />
-            <Select label="Currency" options={["USD", "EUR", "GBP", "JPY", "AUD", "CAD"]} />
-            <Input icon={Calendar} label="Number of Days" placeholder="7" type="number" />
-            <Input icon={Users} label="Number of Travelers" placeholder="2" type="number" />
+            <Input icon={Plane} label="Departure Country" value={departureCountry} onChange={setDeparture} placeholder="United States" />
+            <Input icon={Compass} label="Destination" value={destination} onChange={setDestination} placeholder="Lisbon, Portugal" />
+            <Input icon={Wallet} label="Budget" value={budget} onChange={setBudget} placeholder="3000" type="number" />
+            <Select label="Currency" value={currency} onChange={setCurrency} options={["USD", "EUR", "GBP", "JPY", "AUD", "CAD"]} />
+            <Input icon={Calendar} label="Number of Days" value={days} onChange={setDays} placeholder="7" type="number" />
+            <Input icon={Users} label="Number of Travelers" value={travelers} onChange={setTravelers} placeholder="2" type="number" />
           </div>
 
           <div className="mt-6">
@@ -74,7 +95,7 @@ function Planner() {
               Interests
             </div>
             <div className="flex flex-wrap gap-2">
-              {interests.map((i) => {
+              {interestOptions.map((i) => {
                 const active = selected.includes(i);
                 return (
                   <button
@@ -115,10 +136,14 @@ function Planner() {
 function Input({
   icon: Icon,
   label,
+  value,
+  onChange,
   ...props
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
+  value: string;
+  onChange: (v: string) => void;
   placeholder: string;
   type?: string;
 }) {
@@ -129,6 +154,8 @@ function Input({
         <Icon className="h-4 w-4 text-muted-foreground" />
         <input
           {...props}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
           className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
       </div>
@@ -136,11 +163,25 @@ function Input({
   );
 }
 
-function Select({ label, options }: { label: string; options: string[] }) {
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+}) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-xs font-semibold text-foreground">{label}</span>
-      <select className="w-full rounded-2xl border bg-background px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-2xl border bg-background px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+      >
         {options.map((o) => (
           <option key={o}>{o}</option>
         ))}
