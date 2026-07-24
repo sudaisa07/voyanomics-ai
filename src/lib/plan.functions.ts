@@ -70,13 +70,61 @@ Traveler inputs:
 - Interests / travel style: ${input.interests.join(", ") || "General"}`;
 }
 
+// Ordered by preference. First supported model returned by the Models API wins.
+const PREFERRED_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-001",
+  "gemini-2.0-flash-lite",
+  "gemini-flash-latest",
+];
+
+let cachedModel: string | null = null;
+
+async function selectSupportedModel(apiKey: string): Promise<string> {
+  if (cachedModel) return cachedModel;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(
+      `Unable to list Gemini models (${res.status}). Verify GEMINI_API_KEY is valid. Details: ${text.slice(0, 200)}`,
+    );
+  }
+
+  const data = (await res.json()) as {
+    models?: { name?: string; supportedGenerationMethods?: string[] }[];
+  };
+
+  const available = (data.models ?? [])
+    .filter((m) => m.supportedGenerationMethods?.includes("generateContent"))
+    .map((m) => (m.name ?? "").replace(/^models\//, ""))
+    .filter(Boolean);
+
+  if (available.length === 0) {
+    throw new Error("No Gemini models with generateContent are available for this API key.");
+  }
+
+  const picked =
+    PREFERRED_MODELS.find((m) => available.includes(m)) ??
+    available.find((m) => m.startsWith("gemini-") && m.includes("flash")) ??
+    available.find((m) => m.startsWith("gemini-")) ??
+    available[0];
+
+  cachedModel = picked;
+  return picked;
+}
+
 export const generatePlan = createServerFn({ method: "POST" })
   .inputValidator((data: PlanInput) => data)
   .handler(async ({ data }): Promise<AIPlan> => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
 
-    const model = "gemini-2.5-flash-lite";
+    const model = await selectSupportedModel(apiKey);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const res = await fetch(url, {
@@ -92,7 +140,13 @@ export const generatePlan = createServerFn({ method: "POST" })
     if (!res.ok) {
       const text = await res.text();
       if (res.status === 429) throw new Error("Rate limit reached. Please try again in a moment.");
-      throw new Error(`Gemini API error (${res.status}): ${text.slice(0, 200)}`);
+      if (res.status === 404) {
+        cachedModel = null;
+        throw new Error(
+          `Gemini model "${model}" is not available for your API key. Please try again — a different supported model will be selected.`,
+        );
+      }
+      throw new Error(`Gemini API error (${res.status}) using model "${model}": ${text.slice(0, 200)}`);
     }
 
     const json = (await res.json()) as {
