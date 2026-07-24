@@ -72,37 +72,38 @@ Traveler inputs:
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 
+function getGeminiErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "Unknown Gemini API error";
+}
+
 export const generatePlan = createServerFn({ method: "POST" })
   .inputValidator((data: PlanInput) => data)
   .handler(async ({ data }): Promise<AIPlan> => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey });
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: "user", parts: [{ text: buildUserPrompt(data) }] }],
-        generationConfig: { responseMimeType: "application/json" },
-      }),
-    });
+    let content = "";
+    try {
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: buildUserPrompt(data),
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+          responseMimeType: "application/json",
+        },
+      });
 
-    if (!res.ok) {
-      const text = await res.text();
-      if (res.status === 429) throw new Error("Rate limit reached. Please try again in a moment.");
-      throw new Error(`Gemini API error (${res.status}): ${text.slice(0, 300)}`);
+      content = response.text ?? "";
+    } catch (error) {
+      const status = typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
+      if (status === 429) throw new Error("Rate limit reached. Please try again in a moment.");
+      throw new Error(`Gemini API error${status ? ` (${status})` : ""}: ${getGeminiErrorMessage(error).slice(0, 300)}`);
     }
-
-    const json = (await res.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
-    };
-    const content = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
 
     let parsed: AIPlan;
     try {
