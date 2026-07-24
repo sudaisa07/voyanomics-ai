@@ -73,36 +73,32 @@ Traveler inputs:
 export const generatePlan = createServerFn({ method: "POST" })
   .inputValidator((data: PlanInput) => data)
   .handler(async ({ data }): Promise<AIPlan> => {
-    const apiKey = process.env.LOVABLE_API_KEY;
-    if (!apiKey) throw new Error("Missing LOVABLE_API_KEY");
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const model = "gemini-2.5-flash";
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const res = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Lovable-API-Key": apiKey,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-3.6-flash",
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: buildUserPrompt(data) },
-        ],
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ role: "user", parts: [{ text: buildUserPrompt(data) }] }],
+        generationConfig: { responseMimeType: "application/json" },
       }),
     });
 
     if (!res.ok) {
       const text = await res.text();
       if (res.status === 429) throw new Error("Rate limit reached. Please try again in a moment.");
-      if (res.status === 402) throw new Error("AI credits exhausted. Please add credits to continue.");
-      throw new Error(`AI gateway error (${res.status}): ${text.slice(0, 200)}`);
+      throw new Error(`Gemini API error (${res.status}): ${text.slice(0, 200)}`);
     }
 
     const json = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
     };
-    const content = json.choices?.[0]?.message?.content ?? "";
+    const content = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
 
     let parsed: AIPlan;
     try {
@@ -115,3 +111,4 @@ export const generatePlan = createServerFn({ method: "POST" })
 
     return parsed;
   });
+
