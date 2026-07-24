@@ -1,5 +1,4 @@
 import { createServerFn } from "@tanstack/react-start";
-import { GoogleGenAI } from "@google/genai";
 
 export type PlanInput = {
   departureCountry: string;
@@ -85,7 +84,8 @@ export const generatePlan = createServerFn({ method: "POST" })
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
 
-    const ai = new GoogleGenAI({ apiKey, apiVersion: "v1beta" });
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey });
 
     let content = "";
     try {
