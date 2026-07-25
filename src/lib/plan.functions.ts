@@ -70,7 +70,7 @@ Traveler inputs:
 - Interests / travel style: ${input.interests.join(", ") || "General"}`;
 }
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-flash-lite-latest";
 
 function getGeminiErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
